@@ -1,0 +1,15 @@
+Melhorias Possíveis (Requisitos Extras):
+
+
+
+-Adicionar diferentes tipos de monstros com comportamentos distintos
+
+-Implementar efeitos sonoros para ações do jogo
+
+-Adicionar animações e gráficos mais elaborados
+
+-Implementar sistema de "cheats" como invencibilidade temporária
+
+-Adicionar um tutorial explicando as mecânicas do jogo
+
+-Implementar sistema de salvamento e carregamento de jogo
