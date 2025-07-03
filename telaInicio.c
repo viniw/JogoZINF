@@ -1,26 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "raylib.h"
 
-// Definições de cores
 #define BACKGROUND_COLOR BLACK
 #define MENU_COLOR WHITE
-#define HIGHLIGHT_COLOR RAYWHITE
-#define TEXT_COLOR WHITE
 #define TITLE_COLOR RAYWHITE
 
-// Estrutura para o personagem
-typedef struct {
-    Vector2 position;
-    Texture2D texture;
-    float jumpHeight;
-    bool isJumping;
-    float jumpVelocity;
-    float gravity;
-} Character;
-
-// Estrutura para o menu
 typedef struct {
     const char *options[4];
     int selected;
@@ -28,43 +15,6 @@ typedef struct {
     int spacing;
 } Menu;
 
-// Inicializa o personagem
-void InitCharacter(Character *character) {
-    character->position = (Vector2){100, 100};
-    // Carrega uma textura para o personagem (substitua pelo seu arquivo)
-    character->texture = LoadTexture("resources/character.png");
-    character->jumpHeight = 0;
-    character->isJumping = false;
-    character->jumpVelocity = 0;
-    character->gravity = 0.5f;
-}
-
-// Atualiza o estado do personagem
-void UpdateCharacter(Character *character) {
-    // Lógica do pulo
-    if (character->isJumping) {
-        character->position.y -= character->jumpVelocity;
-        character->jumpVelocity -= character->gravity;
-
-        // Verifica se o personagem voltou ao chão
-        if (character->position.y >= 100) {
-            character->position.y = 100;
-            character->isJumping = false;
-            character->jumpVelocity = 0;
-        }
-    }
-}
-
-// Desenha o personagem com animação de pulo
-void DrawCharacter(Character *character) {
-    // Desenha o personagem com deslocamento vertical do pulo
-    DrawTexture(character->texture,
-                character->position.x,
-                character->position.y - character->jumpHeight,
-                WHITE);
-}
-
-// Inicializa o menu
 void InitMenu(Menu *menu) {
     menu->options[0] = "1. Novo Jogo";
     menu->options[1] = "2. Carregar Jogo";
@@ -75,31 +25,56 @@ void InitMenu(Menu *menu) {
     menu->spacing = 60;
 }
 
-// Desenha o menu
+float titleScale = 1.0f;
+float titleAnimTime = 0.0f;
+bool titleAnimActive = false;
+
 void DrawMenu(Menu *menu, int screenWidth, int screenHeight) {
-    // Desenha o título do jogo
     const char *title = "ZINF";
-    int titleFontSize = 80;
+    int baseFontSize = 80;
     int titleY = screenHeight / 4;
 
+    float scale = titleScale;
+    int scaledFontSize = (int)(baseFontSize * scale);
+
+    int textWidth = MeasureText(title, scaledFontSize);
+    int textX = (screenWidth - textWidth) / 2;
+
     DrawText(title,
-             (screenWidth - MeasureText(title, titleFontSize)) / 2,
+             textX,
              titleY,
-             titleFontSize,
+             scaledFontSize,
              TITLE_COLOR);
 
-    // Desenha as opções do menu
     for (int i = 0; i < 4; i++) {
-        Color color = (i == menu->selected) ? HIGHLIGHT_COLOR : MENU_COLOR;
+        int optionWidth = MeasureText(menu->options[i], menu->fontSize);
+        int optionX = (screenWidth - optionWidth) / 2;
+        int optionY = titleY + 150 + i * menu->spacing;
 
-        DrawText(menu->options[i],
-                 (screenWidth - MeasureText(menu->options[i], menu->fontSize)) / 2,
-                 titleY + 150 + i * menu->spacing,
-                 menu->fontSize,
-                 color);
+        if (i == menu->selected) {
+            DrawRectangleLines(
+                optionX - 20,
+                optionY - 10,
+                optionWidth + 40,
+                menu->fontSize + 20,
+                RAYWHITE
+            );
+
+            DrawText(menu->options[i],
+                     optionX,
+                     optionY,
+                     menu->fontSize,
+                     RAYWHITE);
+        }
+        else {
+            DrawText(menu->options[i],
+                     optionX,
+                     optionY,
+                     menu->fontSize,
+                     MENU_COLOR);
+        }
     }
 
-    // Desenha informações adicionais
     const char *footer = "UFRGS - Algoritmos e Programacao 2025";
     DrawText(footer,
              (screenWidth - MeasureText(footer, 20)) / 2,
@@ -108,79 +83,131 @@ void DrawMenu(Menu *menu, int screenWidth, int screenHeight) {
              GRAY);
 }
 
-// Atualiza o menu com base na entrada do usuário
-void UpdateMenu(Menu *menu, Character *character) {
+void UpdateMenu(Menu *menu, int screenWidth, int screenHeight, Sound hoverSound, float deltaTime) {
+    static int lastSelected = -1;
+    static int lastHovered = -1;
+    bool hoveringAny = false;
+
     if (IsKeyPressed(KEY_DOWN)) {
         menu->selected = (menu->selected + 1) % 4;
-        character->isJumping = true;
-        character->jumpVelocity = 10.0f;
+        PlaySound(hoverSound);
     }
     else if (IsKeyPressed(KEY_UP)) {
         menu->selected = (menu->selected - 1 + 4) % 4;
-        character->isJumping = true;
-        character->jumpVelocity = 10.0f;
+        PlaySound(hoverSound);
     }
-    // Pulo também com as teclas direcionais
-    else if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_LEFT)) {
-        character->isJumping = true;
-        character->jumpVelocity = 10.0f;
+
+    if (IsKeyPressed(KEY_ONE)) { menu->selected = 0; PlaySound(hoverSound); }
+    if (IsKeyPressed(KEY_TWO)) { menu->selected = 1; PlaySound(hoverSound); }
+    if (IsKeyPressed(KEY_THREE)) { menu->selected = 2; PlaySound(hoverSound); }
+    if (IsKeyPressed(KEY_FOUR)) { menu->selected = 3; PlaySound(hoverSound); }
+
+    Vector2 mousePos = GetMousePosition();
+    int titleY = screenHeight / 4;
+
+    for (int i = 0; i < 4; i++) {
+        int optionWidth = MeasureText(menu->options[i], menu->fontSize);
+        int optionX = (screenWidth - optionWidth) / 2;
+        int optionY = titleY + 150 + i * menu->spacing;
+
+        Rectangle optionBounds = { (float)optionX, (float)optionY, (float)optionWidth, (float)menu->fontSize };
+
+        if (CheckCollisionPointRec(mousePos, optionBounds)) {
+            hoveringAny = true;
+            SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+
+            if (lastHovered != i) {
+                PlaySound(hoverSound);
+                lastHovered = i;
+            }
+
+            menu->selected = i;
+        }
+    }
+
+    if (!hoveringAny) {
+        SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+        lastHovered = -1;
+    }
+
+    if (menu->selected != lastSelected) {
+        titleAnimActive = true;
+        titleAnimTime = 0.0f;
+        lastSelected = menu->selected;
+    }
+
+    if (titleAnimActive) {
+        titleAnimTime += deltaTime;
+        titleScale = 1.0f + 0.1f * sinf(titleAnimTime * 10.0f);
+
+        if (titleAnimTime > 0.5f) {
+            titleAnimActive = false;
+            titleScale = 1.0f;
+        }
+    }
+}
+
+// Função para desenhar a textura com efeito blur simples
+void DrawBlurredTexture(Texture2D texture, int screenWidth, int screenHeight) {
+    Vector2 pos = {0, 0};
+    Rectangle sourceRec = {0, 0, (float)texture.width, (float)-texture.height};
+    Color tint = (Color){255, 255, 255, 30}; // Transparência baixa para blur
+
+    for (int y = -2; y <= 2; y++) {
+        for (int x = -2; x <= 2; x++) {
+            DrawTextureRec(texture,
+                           sourceRec,
+                           (Vector2){pos.x + x, pos.y + y},
+                           tint);
+        }
     }
 }
 
 int main(void) {
-    // Configuração inicial da janela
     const int screenWidth = 1200;
     const int screenHeight = 900;
 
     InitWindow(screenWidth, screenHeight, "ZINF - Trabalho Final");
+    InitAudioDevice();
     SetTargetFPS(60);
 
-    // Inicializa o menu e o personagem
     Menu menu;
     InitMenu(&menu);
 
-    Character character;
-    InitCharacter(&character);
+    Sound hoverSound = LoadSound("resources/hover.wav");
 
-    // Variável para controlar o loop principal
+    Texture2D background = LoadTexture("resources/background.png");
+
     bool shouldClose = false;
     int gameState = 0;
 
-    // Loop principal do jogo
     while (!WindowShouldClose() && !shouldClose) {
-        // Atualizações
-        UpdateMenu(&menu, &character);
-        UpdateCharacter(&character);
+        float deltaTime = GetFrameTime();
 
-        // Verifica se o usuário selecionou uma opção
-        if (IsKeyPressed(KEY_ENTER)) {
-            if (menu.selected == 0) {
-                gameState = 1;
-                shouldClose = true;
-            }
-            else if (menu.selected == 1) {
-                gameState = 2;
-                shouldClose = true;
-            }
-            else if (menu.selected == 2) {
-                gameState = 3;
-                shouldClose = true;
-            }
-            else if (menu.selected == 3) {
-                shouldClose = true;
+        UpdateMenu(&menu, screenWidth, screenHeight, hoverSound, deltaTime);
+
+        if (IsKeyPressed(KEY_ENTER) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            switch (menu.selected) {
+                case 0: gameState = 1; shouldClose = true; break;
+                case 1: gameState = 2; shouldClose = true; break;
+                case 2: gameState = 3; shouldClose = true; break;
+                case 3: shouldClose = true; break;
             }
         }
 
-        // Desenho
         BeginDrawing();
-        ClearBackground(BACKGROUND_COLOR);
+        ClearBackground(BLACK);
+
+        DrawBlurredTexture(background, screenWidth, screenHeight);
+
         DrawMenu(&menu, screenWidth, screenHeight);
-        DrawCharacter(&character);
+
         EndDrawing();
     }
 
-    // Libera recursos
-    UnloadTexture(character.texture);
+    UnloadTexture(background);
+    UnloadSound(hoverSound);
+    CloseAudioDevice();
     CloseWindow();
 
     return 0;
